@@ -22,7 +22,7 @@ assert 'TITLE_READY menu=true connected=false local_helper=-1' in normal_log.rea
 assert not listening(),'Title screen started a room before Start game'
 with (EVIDENCE/'local-cold-start.log').open('w') as out:
     result=subprocess.run([str(APP),'--headless','--','--qa-local'],stdout=out,stderr=subprocess.STDOUT,timeout=45)
-assert result.returncode==0,(EVIDENCE/'local-cold-start.log').read_text()
+assert result.returncode==0, f'exit={result.returncode}\n'+(EVIDENCE/'local-cold-start.log').read_text()
 assert 'LOCAL_STARTUP_RESULT cold_start=true keyboard_walk=true restart=true reconnect=true click_route=true' in (EVIDENCE/'local-cold-start.log').read_text()
 closed()
 owner_log=EVIDENCE/'local-owner.log'
