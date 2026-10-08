@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Draft or published release tag
+        description: Published release tag (the repository may be private)
         required: true
         type: string
       sha256:
