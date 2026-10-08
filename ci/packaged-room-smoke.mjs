@@ -25,15 +25,24 @@ function connect(url,name,key=''){
  return new Promise((resolve,reject)=>{
   const ws=new WebSocket(url);clients.push(ws);const messages=[];const timer=setTimeout(()=>{ws.terminate();reject(Error('WebSocket join timeout'));},12000);
   ws.on('open',()=>ws.send(JSON.stringify({type:'join',name,ownerKey:key,capabilities:{hallLayouts:1,stateDelta:1}})));
-  ws.on('error',reject);ws.on('message',raw=>{const data=JSON.parse(raw);messages.push(data);if(data.type==='welcome'){clearTimeout(timer);resolve({ws,welcome:data,messages});}});
+  ws.on('error',error=>{clearTimeout(timer);reject(error);});ws.on('message',raw=>{const data=JSON.parse(raw);messages.push(data);if(data.type==='welcome'){clearTimeout(timer);resolve({ws,welcome:data,messages});}});
  });
 }
 function refused(url){return new Promise((resolve,reject)=>{
- const ws=new WebSocket(url);const timer=setTimeout(()=>{ws.terminate();reject(Error('Refusal timeout'));},10000);
- ws.on('open',()=>{clearTimeout(timer);ws.close();reject(Error('Wrong invitation was accepted'));});
- ws.on('unexpected-response',(_request,response)=>{clearTimeout(timer);assert.equal(response.statusCode,403);response.resume();resolve();});
- ws.on('error',()=>{});
+ const ws=new WebSocket(url);clients.push(ws);let refused=false;
+ const timer=setTimeout(()=>{ws.terminate();reject(Error('Refusal/close timeout'));},10000);
+ ws.on('open',()=>{clearTimeout(timer);ws.terminate();reject(Error('Wrong invitation was accepted'));});
+ ws.on('unexpected-response',(_request,response)=>{
+  refused=response.statusCode===403;
+  // A custom unexpected-response handler owns handshake cleanup. Merely draining
+  // the HTTP body leaves ws CONNECTING and its public TLS socket alive.
+  if(!refused){clearTimeout(timer);reject(Error('Expected invitation403, got '+response.statusCode));}
+  ws.terminate();
+ });
+ ws.on('close',()=>{clearTimeout(timer);if(refused)resolve();});
+ ws.on('error',error=>{if(!refused){clearTimeout(timer);reject(error);}});
 });}
+async function getStatus(url){const response=await fetch(url);await response.arrayBuffer();return response.status;}
 function relayDescendants(){
  let rows;
  if(process.platform==='win32'){
@@ -46,7 +55,7 @@ function relayDescendants(){
 }
 try{
  await until(()=>output.includes('Hearthside room:'),'helper startup');
- assert.equal((await fetch(origin)).status,403);await refused(origin.replace('http:','ws:')+'/?invite=wrong');
+ assert.equal(await getStatus(origin),403);await refused(origin.replace('http:','ws:')+'/?invite=wrong');
  const local=origin.replace('http:','ws:')+'/?invite='+inviteKey;
  const owner=await connect(local,'Owner',ownerKey),guest=await connect(local,'Guest');
  assert.equal(owner.welcome.isHomeOwner,true);assert.equal(guest.welcome.isHomeOwner,false);assert.equal(guest.welcome.protocol,9);
@@ -64,12 +73,14 @@ try{
   await until(()=>owner.messages.some(m=>m.type==='chat'&&m.text===publicMarker),'public-to-local chat');
   const relays=relayDescendants();assert.equal(relays.length,1,'scoped owned relay visible');
   await post('/tunnel/stop');await until(()=>relays.every(pid=>!alive(pid)),'relay cleanup after IPC stop');
-  assert.equal(status().state,'off');assert.equal((await fetch(origin+'/?invite='+inviteKey)).status,200);
+  assert.equal(status().state,'off');assert.equal(await getStatus(origin+'/?invite='+inviteKey),200);
   console.log('PACKAGED_ROOM_PUBLIC_PASS verified TLS, valid invite roundtrip, invalid invite403, no remote ownership, relay cleanup, local room preserved');
  }
  await post('/shutdown');await until(()=>!alive(server.pid),'server graceful shutdown');
  console.log('PACKAGED_ROOM_PASS '+process.platform);
 }finally{
- for(const ws of clients)ws.terminate();if(alive(server.pid))server.kill('SIGTERM');
+ for(const ws of clients)ws.terminate();
+ if(alive(server.pid))server.kill('SIGTERM');
+ await until(()=>clients.every(ws=>ws.readyState===WebSocket.CLOSED),'test WebSocket cleanup',3000);
  await new Promise(r=>setTimeout(r,2000));rmSync(folder,{recursive:true,force:true});
 }
