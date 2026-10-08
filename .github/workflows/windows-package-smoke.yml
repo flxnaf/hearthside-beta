@@ -49,11 +49,19 @@ jobs:
           gh api "repos/$env:GITHUB_REPOSITORY/contents/ci/packaged-room-smoke.mjs" --jq '.content' | Out-File -FilePath room-harness-base64.txt
           if ($LASTEXITCODE) { throw 'Room harness retrieval failed' }
           [IO.File]::WriteAllBytes("$PWD/packaged-room-smoke.mjs", [Convert]::FromBase64String((Get-Content room-harness-base64.txt -Raw)))
+          gh api "repos/$env:GITHUB_REPOSITORY/contents/ci/windows-startup-probe.gd" --jq '.content' | Out-File -FilePath probe-base64.txt
+          if ($LASTEXITCODE) { throw 'Probe retrieval failed' }
+          [IO.File]::WriteAllBytes("$PWD/windows-startup-probe.gd", [Convert]::FromBase64String((Get-Content probe-base64.txt -Raw)))
       - name: Test actual Windows executable and local host
         shell: pwsh
         run: |
           python windows-startup.py "$env:HEARTHSIDE_EXE"
           if ($LASTEXITCODE) { throw 'Windows runtime smoke failed' }
+      - name: Diagnose failed game startup
+        if: failure() && env.HEARTHSIDE_EXE != ''
+        shell: pwsh
+        run: |
+          python -c "import subprocess,os; subprocess.run([os.environ['HEARTHSIDE_EXE'],'--headless','--script',os.path.abspath('windows-startup-probe.gd'),'--','--qa-local'],timeout=60)"
       - name: Test Windows internet invitations and cleanup
         if: always() && env.HEARTHSIDE_EXE != ''
         shell: pwsh
