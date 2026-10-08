@@ -55,7 +55,7 @@ jobs:
           python windows-startup.py "$env:HEARTHSIDE_EXE"
           if ($LASTEXITCODE) { throw 'Windows runtime smoke failed' }
       - name: Test Windows internet invitations and cleanup
-        if: always() && env.HEARTHSIDE_EXE != ''
+        timeout-minutes: 4
         shell: pwsh
         run: |
           $app = Split-Path $env:HEARTHSIDE_EXE
