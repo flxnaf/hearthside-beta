@@ -1,0 +1,70 @@
+name: Windows package smoke
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft or published release tag
+        required: true
+        type: string
+      sha256:
+        description: Expected Windows ZIP SHA-256
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TEST_TAG: ${{ inputs.tag }}
+      EXPECTED_SHA: ${{ inputs.sha256 }}
+    steps:
+      - name: Download and verify candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:TEST_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid version tag' }
+          if ($env:EXPECTED_SHA -notmatch '^[a-fA-F0-9]{64}$') { throw 'Invalid checksum' }
+          gh release download $env:TEST_TAG --repo $env:GITHUB_REPOSITORY --pattern '*windows-x64.zip' --dir download
+          if ($LASTEXITCODE) { throw 'Download failed' }
+          $zip = @(Get-ChildItem download -Filter '*.zip')
+          if ($zip.Count -ne 1) { throw 'Expected one Windows package' }
+          $hash = (Get-FileHash $zip[0].FullName -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:EXPECTED_SHA.ToLower()) { throw 'Package checksum mismatch' }
+          Expand-Archive $zip[0].FullName -DestinationPath extracted
+          $exe = @(Get-ChildItem extracted -Recurse -Filter 'Hearthside Study.exe')
+          if ($exe.Count -ne 1) { throw 'Expected one game executable' }
+          "HEARTHSIDE_EXE=$($exe[0].FullName)" >> $env:GITHUB_ENV
+          "APPDATA=$env:RUNNER_TEMP\hearthside-test-profile" >> $env:GITHUB_ENV
+          Write-Output "Verified package SHA-256 $hash"
+      - name: Fetch test harness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh api "repos/$env:GITHUB_REPOSITORY/contents/ci/windows-startup.py" --jq '.content' | Out-File -FilePath harness-base64.txt
+          if ($LASTEXITCODE) { throw 'Harness retrieval failed' }
+          [IO.File]::WriteAllBytes("$PWD/windows-startup.py", [Convert]::FromBase64String((Get-Content harness-base64.txt -Raw)))
+          gh api "repos/$env:GITHUB_REPOSITORY/contents/ci/packaged-room-smoke.mjs" --jq '.content' | Out-File -FilePath room-harness-base64.txt
+          if ($LASTEXITCODE) { throw 'Room harness retrieval failed' }
+          [IO.File]::WriteAllBytes("$PWD/packaged-room-smoke.mjs", [Convert]::FromBase64String((Get-Content room-harness-base64.txt -Raw)))
+      - name: Test actual Windows executable and local host
+        shell: pwsh
+        run: |
+          python windows-startup.py "$env:HEARTHSIDE_EXE"
+          if ($LASTEXITCODE) { throw 'Windows runtime smoke failed' }
+      - name: Test Windows internet invitations and cleanup
+        shell: pwsh
+        run: |
+          $app = Split-Path $env:HEARTHSIDE_EXE
+          & "$app/room-server/node-x64.exe" packaged-room-smoke.mjs "$app" --online
+          if ($LASTEXITCODE) { throw 'Windows online invitation smoke failed' }
+      - name: Show runtime evidence
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem evidence -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Output "=== $($_.Name) ==="
+            Get-Content $_.FullName -Tail 70
+          }
