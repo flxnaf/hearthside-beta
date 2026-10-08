@@ -55,6 +55,7 @@ jobs:
           python windows-startup.py "$env:HEARTHSIDE_EXE"
           if ($LASTEXITCODE) { throw 'Windows runtime smoke failed' }
       - name: Test Windows internet invitations and cleanup
+        if: always() && env.HEARTHSIDE_EXE != ''
         shell: pwsh
         run: |
           $app = Split-Path $env:HEARTHSIDE_EXE
@@ -67,4 +68,8 @@ jobs:
           Get-ChildItem evidence -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object {
             Write-Output "=== $($_.Name) ==="
             Get-Content $_.FullName -Tail 70
+          }
+          Get-ChildItem "$env:APPDATA/Godot/app_userdata/Hearthside Study/logs" -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Output "=== Godot $($_.Name) ==="
+            Get-Content $_.FullName -Tail 100
           }
