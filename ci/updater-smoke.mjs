@@ -19,7 +19,7 @@ const sourceManifest=JSON.parse(await fs.readFile(path.join(source,'manifest.jso
 assert.equal(sourceManifest.platform,'windows-x64');
 const originalHelper=path.join(source,'room-server/update.mjs');
 await fs.access(originalHelper);
-const root=await fs.mkdtemp(path.join(os.tmpdir(),'hearthside-update-ci-'));
+const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'hearthside-update-ci-')));
 const target=path.join(root,'Hearthside Study'), staging=path.join(root,'.hearthside-update-test'), staged=path.join(staging,'Hearthside Study');
 const backup=path.join(root,`.hearthside-backup-${crypto.randomUUID()}`), job=path.join(root,'updater-job');
 const profile=path.join(root,'profile'), releaseParent=path.join(root,'release-parent'), restartFile=path.join(root,'restart-pid.json'), gameLog=path.join(root,'restarted-game.log');
