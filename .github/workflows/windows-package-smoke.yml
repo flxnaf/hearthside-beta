@@ -49,6 +49,16 @@ jobs:
           gh api "repos/$env:GITHUB_REPOSITORY/contents/ci/packaged-room-smoke.mjs" --jq '.content' | Out-File -FilePath room-harness-base64.txt
           if ($LASTEXITCODE) { throw 'Room harness retrieval failed' }
           [IO.File]::WriteAllBytes("$PWD/packaged-room-smoke.mjs", [Convert]::FromBase64String((Get-Content room-harness-base64.txt -Raw)))
+          gh api "repos/$env:GITHUB_REPOSITORY/contents/ci/updater-smoke.mjs" --jq '.content' | Out-File -FilePath updater-harness-base64.txt
+          if ($LASTEXITCODE) { throw 'Updater harness retrieval failed' }
+          [IO.File]::WriteAllBytes("$PWD/updater-smoke.mjs", [Convert]::FromBase64String((Get-Content updater-harness-base64.txt -Raw)))
+      - name: Test in-game updater replacement and restart
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          $app = Split-Path $env:HEARTHSIDE_EXE
+          & "$app/room-server/node-x64.exe" updater-smoke.mjs "$app"
+          if ($LASTEXITCODE) { throw 'Windows updater install/restart failed' }
       - name: Test actual Windows executable and local host
         shell: pwsh
         run: |
