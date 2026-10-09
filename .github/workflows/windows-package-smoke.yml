@@ -10,8 +10,10 @@ on:
         description: Expected Windows ZIP SHA-256
         required: true
         type: string
+# GitHub requires publisher access to download an unpublished draft release.
+# The job only reads the candidate; none of its steps publish or edit a release.
 permissions:
-  contents: read
+  contents: write
 jobs:
   windows:
     runs-on: windows-latest
