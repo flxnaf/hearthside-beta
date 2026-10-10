@@ -87,6 +87,10 @@ jobs:
             Get-Content recovery-check-errors.log
             $log = Get-Content recovery-check.log -Raw
             if ($process.ExitCode -ne 0 -or $log -notmatch 'recovery=true' -or $log -notmatch 'PUBLIC_JOIN_PASS os=Windows') { throw 'Windows DNS recovery failed' }
+            $direct = Start-Process -FilePath $env:HEARTHSIDE_EXE -ArgumentList @('--headless', '--', '--qa-public-direct-connection', '--qa-require-dns-recovery') -PassThru -Wait -NoNewWindow -RedirectStandardOutput direct-recovery-check.log -RedirectStandardError direct-recovery-check-errors.log
+            Get-Content direct-recovery-check.log
+            Get-Content direct-recovery-check-errors.log
+            if ($direct.ExitCode -ne 0 -or (Get-Content direct-recovery-check.log -Raw) -notmatch 'PUBLIC_DIRECT_JOIN_PASS os=Windows recovery=true') { throw 'Windows direct join recovery failed' }
             $helpers = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node-x64.exe' -and $_.CommandLine -like '*public-relay.mjs*' })
             if ($helpers.Count -ne 0) { throw 'Connection recovery helper outlived game' }
           } finally {
