@@ -64,6 +64,17 @@ jobs:
           Get-Content profile-check.log
           if ((Get-Content profile-check.log -Raw) -notmatch 'PROFILE_PRIVACY_PASS') { throw 'Profile check did not complete' }
           if ($process.ExitCode -ne 0) { throw 'Packaged nickname privacy regression' }
+      - name: Test public directory and hall from Windows
+        timeout-minutes: 1
+        shell: pwsh
+        run: |
+          gh api "repos/$env:GITHUB_REPOSITORY/contents/ci/public-connection.gd" --jq '.content' | Out-File -FilePath public-harness-base64.txt
+          if ($LASTEXITCODE) { throw 'Public connection harness retrieval failed' }
+          [IO.File]::WriteAllBytes("$PWD/public-connection.gd", [Convert]::FromBase64String((Get-Content public-harness-base64.txt -Raw)))
+          $process = Start-Process -FilePath $env:HEARTHSIDE_EXE -ArgumentList @('--headless', '--script', "$PWD/public-connection.gd") -PassThru -Wait -NoNewWindow -RedirectStandardOutput public-check.log -RedirectStandardError public-check-errors.log
+          Get-Content public-check.log
+          Get-Content public-check-errors.log
+          if ($process.ExitCode -ne 0 -or (Get-Content public-check.log -Raw) -notmatch 'PUBLIC_JOIN_PASS os=Windows') { throw 'Windows public connection failed' }
       - name: Test in-game updater replacement and restart
         timeout-minutes: 3
         shell: pwsh
