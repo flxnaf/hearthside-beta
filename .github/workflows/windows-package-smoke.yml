@@ -54,6 +54,16 @@ jobs:
           gh api "repos/$env:GITHUB_REPOSITORY/contents/ci/updater-smoke.mjs" --jq '.content' | Out-File -FilePath updater-harness-base64.txt
           if ($LASTEXITCODE) { throw 'Updater harness retrieval failed' }
           [IO.File]::WriteAllBytes("$PWD/updater-smoke.mjs", [Convert]::FromBase64String((Get-Content updater-harness-base64.txt -Raw)))
+      - name: Test packaged profile privacy
+        shell: pwsh
+        run: |
+          gh api "repos/$env:GITHUB_REPOSITORY/contents/ci/profile-privacy.gd" --jq '.content' | Out-File -FilePath profile-harness-base64.txt
+          if ($LASTEXITCODE) { throw 'Profile harness retrieval failed' }
+          [IO.File]::WriteAllBytes("$PWD/profile-privacy.gd", [Convert]::FromBase64String((Get-Content profile-harness-base64.txt -Raw)))
+          $process = Start-Process -FilePath $env:HEARTHSIDE_EXE -ArgumentList @('--headless', '--script', "$PWD/profile-privacy.gd") -PassThru -Wait -NoNewWindow -RedirectStandardOutput profile-check.log -RedirectStandardError profile-check-errors.log
+          Get-Content profile-check.log
+          if ((Get-Content profile-check.log -Raw) -notmatch 'PROFILE_PRIVACY_PASS') { throw 'Profile check did not complete' }
+          if ($process.ExitCode -ne 0) { throw 'Packaged nickname privacy regression' }
       - name: Test in-game updater replacement and restart
         timeout-minutes: 3
         shell: pwsh
