@@ -80,7 +80,15 @@ jobs:
           try {
             [IO.File]::AppendAllText($hostsPath, "`n0.0.0.0 gx10-ea6b.taile80052.ts.net`n:: gx10-ea6b.taile80052.ts.net`n")
             Clear-DnsClientCache
-            $addresses = [System.Net.Dns]::GetHostAddresses('gx10-ea6b.taile80052.ts.net') | ForEach-Object { $_.ToString() }
+            $addresses = @()
+            try {
+              $addresses = [System.Net.Dns]::GetHostAddresses('gx10-ea6b.taile80052.ts.net') | ForEach-Object { $_.ToString() }
+            } catch {
+              $cause = $_.Exception
+              while ($cause.InnerException) { $cause = $cause.InnerException }
+              if ($cause -isnot [System.Net.Sockets.SocketException] -or $cause.SocketErrorCode -notin @('HostNotFound', 'NoData')) { throw }
+              Write-Output "Verified system DNS failure: $($cause.SocketErrorCode)"
+            }
             if (@($addresses | Where-Object { $_ -notin @('0.0.0.0', '::') }).Count -gt 0) { throw 'Failed to isolate broken DNS scenario' }
             $process = Start-Process -FilePath $env:HEARTHSIDE_EXE -ArgumentList @('--headless', '--', '--qa-public-connection', '--qa-require-dns-recovery') -PassThru -Wait -NoNewWindow -RedirectStandardOutput recovery-check.log -RedirectStandardError recovery-check-errors.log
             Get-Content recovery-check.log
