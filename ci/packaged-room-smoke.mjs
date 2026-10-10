@@ -61,6 +61,21 @@ try{
  assert.equal(owner.welcome.isHomeOwner,true);assert.equal(guest.welcome.isHomeOwner,false);assert.equal(guest.welcome.protocol,9);
  const marker='packaged-room-chat-'+process.pid;owner.ws.send(JSON.stringify({type:'chat',text:marker}));
  await until(()=>guest.messages.some(m=>m.type==='chat'&&m.text===marker),'two-client room chat');
+ // Exercise the new daily aggregate through the real packaged WebSocket helper.
+ const share=seconds=>owner.ws.send(JSON.stringify({type:'study_today',seconds,day:new Date().toISOString().slice(0,10),utcOffsetMinutes:0}));
+ share(4925);
+ for(let i=0;i<3;i++){owner.ws.send(JSON.stringify({type:'move',x:1.3,z:11.95,yaw:0}));await new Promise(r=>setTimeout(r,100));}
+ owner.ws.send(JSON.stringify({type:'sit',seat:0}));
+ const peerRecord=(id,seconds)=>guest.messages.some(m=>(m.players??[]).some(p=>p.id===id&&p.place==='seated'&&p.studyTodaySeconds===seconds));
+ await until(()=>peerRecord(owner.welcome.id,4925),'daily total visible above seated owner');
+ const before=guest.messages.length;share(4926);
+ await until(()=>guest.messages.slice(before).some(m=>(m.studyTimes??[]).some(([id,seconds])=>id===owner.welcome.id&&seconds===4926)),'compact per-second daily total');
+ owner.ws.send(JSON.stringify({type:'stand'}));
+ await until(()=>guest.messages.slice(before).some(m=>(m.players??[]).some(p=>p.id===owner.welcome.id&&p.place==='house'&&p.studyTodaySeconds===null)),'standing hides daily bubble');
+ owner.ws.send(JSON.stringify({type:'sit',seat:0}));await until(()=>peerRecord(owner.welcome.id,4926),'reseating preserves daily total');
+ share(12);await until(()=>guest.messages.some(m=>(m.studyTimes??[]).some(([id,seconds])=>id===owner.welcome.id&&seconds===12)),'edited daily total reaches peer');
+ assert.ok(!JSON.stringify(guest.messages).includes('studyTodayExpiresAt'),'private daily expiry leaked');
+ console.log('PACKAGED_TODAY_PASS daily aggregate, compact seconds, break retention, calendar correction, private metadata');
  console.log('PACKAGED_ROOM_LOCAL_PASS owner/guest handshake, private secret rejection, two-client chat');
  if(process.argv.includes('--online')){
   await post('/tunnel/retry');
